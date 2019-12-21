@@ -1,0 +1,90 @@
+---
+title: "Predictive model for StarWars data"
+output: 
+  html_document:
+    toc: true
+---
+
+# Read data
+
+Read the data from the kaggle website https://www.kaggle.com/jsphyg/star-wars#characters.csv.
+
+```{r warning=FALSE, message=FALSE}
+library("openxlsx")
+library("missRanger")
+library("randomForest")
+charactersStarWars <- read.xlsx("charactersStarWars.xlsx")
+```
+
+# Data Preprocessing
+
+Change characters into factors.
+
+```{r warning=FALSE, message=FALSE}
+set.seed(1)
+
+rownames(charactersStarWars) <- charactersStarWars[,1]
+charactersStarWars <- charactersStarWars[,c(2,3,4,5,6,8,9,10,11)]
+charactersStarWars$hair_color <- factor(gsub(charactersStarWars$hair_color, pattern = ",.*", replacement = ""))
+charactersStarWars$skin_color <- factor(gsub(charactersStarWars$skin_color, pattern = ",.*", replacement = ""))
+charactersStarWars$gender <- factor(charactersStarWars$gender)
+charactersStarWars$eye_color <- factor(gsub(charactersStarWars$eye_color, pattern = "[,-].*", replacement = ""))
+charactersStarWars$homeworld <- factor(charactersStarWars$homeworld)
+charactersStarWars$species <- factor(charactersStarWars$species)
+
+charactersStarWarsFilled <- missRanger(charactersStarWars)
+
+head(charactersStarWarsFilled)
+```
+
+
+# Create a gbm model
+
+Let's use `gbm` library to create a `gbm` model with 250 trees 3 levels deep.
+
+```{r warning=FALSE, message=FALSE}
+library("gbm")
+set.seed(1)
+
+model <- gbm(Jedi~height + mass + hair_color + skin_color + eye_color + gender , data = charactersStarWarsFilled)
+```
+
+# Create a DALEX explainer
+
+Let's wrap gbm model into a DALEX explainer.
+
+```{r warning=FALSE, message=FALSE}
+library("DALEX")
+model_explained <- explain(model, charactersStarWarsFilled, y = charactersStarWarsFilled$Jedi)
+```
+
+# Feature Importance explainer
+
+Calculate Feature Importnace explainer.
+
+```{r warning=FALSE, message=FALSE}
+library("ingredients")
+library("auditor")
+plot(feature_importance(model_explained, loss_function = DALEX:::loss_one_minus_auc))
+
+plot_roc(model_evaluation(model_explained))
+```
+
+
+# modelStudio app
+
+Calculate modelStudio dashboard.
+
+```{r eval = FALSE}
+library(modelStudio)
+op <- modelStudioOptions(
+  subtitle = "What makes a Jedi (or Sith)?"
+)
+modelStudioStarWars <- modelStudio(mexp, 
+                  new_observation = charactersFilled[,1:6],
+                  options = op)
+modelStudioStarWars
+
+r2d3::save_d3_html(modelStudioStarWars, file = "index.html")
+```
+
